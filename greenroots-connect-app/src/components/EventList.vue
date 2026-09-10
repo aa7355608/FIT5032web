@@ -7,9 +7,12 @@ const props = defineProps({
   isLoading: { type: Boolean, default: false },
   savedIds: { type: Set, required: true },
   suburbs: { type: Array, default: () => [] },
+  isLoggedIn: { type: Boolean, default: false },
+  currentUserId: { type: String, default: "" },
+  hasUserRated: { type: Function, default: () => false },
 });
 
-const emit = defineEmits(["toggle-save", "select"]);
+const emit = defineEmits(["toggle-save", "select", "rate"]);
 
 const query = ref("");
 const suburbFilter = ref("all");
@@ -92,8 +95,11 @@ const filteredEvents = computed(() => {
           :key="event.id"
           :event="event"
           :saved="savedIds.has(event.id)"
+          :is-logged-in="isLoggedIn"
+          :already-rated="hasUserRated(event.id, currentUserId)"
           @toggle-save="emit('toggle-save', $event)"
           @select="emit('select', $event)"
+          @rate="emit('rate', $event)"
         />
       </div>
 

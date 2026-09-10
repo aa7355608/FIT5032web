@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Basic security best practice (BR C.4): a Content-Security-Policy that
+      only allows scripts/styles from this origin and Google Fonts, and
+      disallows framing this page's origin in <object>/<embed> tags. This is
+      a real, effective defence layer on top of Vue's default template
+      escaping. Note: clickjacking protection (frame-ancestors / X-Frame-
+      Options) must be set as an HTTP response header by whatever serves
+      this build in production — browsers ignore it inside a <meta> tag, so
+      it is intentionally left out here rather than included as a no-op.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; object-src 'none'"
+    />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>GreenRoots Connect — Urban Greening & Tree Planting</title>
     <meta name="description" content="Find, join and track local tree-planting and urban greening events across Melbourne." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

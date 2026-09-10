@@ -1,7 +1,11 @@
 <script setup>
 import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuth } from "../composables/useAuth.js";
 
 const isOpen = ref(false);
+const router = useRouter();
+const { currentUser, isLoggedIn, isCoordinator, logout } = useAuth();
 
 function toggleMenu() {
   isOpen.value = !isOpen.value;
@@ -10,23 +14,26 @@ function toggleMenu() {
 function closeMenu() {
   isOpen.value = false;
 }
+
+function handleLogout() {
+  logout();
+  closeMenu();
+  router.push("/");
+}
 </script>
 
 <template>
   <header class="nav">
     <div class="nav-inner container">
-      <a href="#top" class="brand" @click="closeMenu">
+      <router-link to="/" class="brand" @click="closeMenu">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="22" height="22">
-            <path
-              d="M12 2c3 3 5 6 5 9.5A5 5 0 0 1 7 11.5C7 8 9 5 12 2Z"
-              fill="currentColor"
-            />
+            <path d="M12 2c3 3 5 6 5 9.5A5 5 0 0 1 7 11.5C7 8 9 5 12 2Z" fill="currentColor" />
             <path d="M12 12v10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
         </span>
         GreenRoots Connect
-      </a>
+      </router-link>
 
       <button
         class="menu-toggle"
@@ -40,10 +47,20 @@ function closeMenu() {
       </button>
 
       <nav id="primary-nav" class="links" :class="{ open: isOpen }" aria-label="Primary">
-        <a href="#events" @click="closeMenu">Events</a>
-        <a href="#map" @click="closeMenu">Explore Map</a>
-        <a href="#volunteer" @click="closeMenu">Register</a>
-        <a href="#about" @click="closeMenu">About</a>
+        <router-link to="/#events" @click="closeMenu">Events</router-link>
+        <router-link to="/#map" @click="closeMenu">Explore Map</router-link>
+        <router-link to="/#volunteer" @click="closeMenu">Register interest</router-link>
+        <router-link v-if="isCoordinator" to="/coordinator" @click="closeMenu">Coordinator Portal</router-link>
+
+        <div class="auth-slot">
+          <template v-if="isLoggedIn">
+            <span class="user-chip">{{ currentUser?.name }} &middot; {{ currentUser?.role }}</span>
+            <button type="button" class="btn btn-ghost small" @click="handleLogout">Log out</button>
+          </template>
+          <router-link v-else to="/login" class="btn btn-primary small" @click="closeMenu">
+            Login / Register
+          </router-link>
+        </div>
       </nav>
     </div>
   </header>
@@ -85,7 +102,7 @@ function closeMenu() {
 .links {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 28px;
 }
 
 .links a {
@@ -95,6 +112,7 @@ function closeMenu() {
   color: var(--ink-soft);
   position: relative;
   padding: 4px 0;
+  white-space: nowrap;
 }
 
 .links a:hover {
@@ -114,6 +132,27 @@ function closeMenu() {
 
 .links a:hover::after {
   right: 0;
+}
+
+.auth-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 8px;
+  padding-left: 20px;
+  border-left: 1px solid var(--line);
+}
+
+.user-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--forest);
+  white-space: nowrap;
+}
+
+.btn.small {
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 .menu-toggle {
@@ -164,7 +203,7 @@ function closeMenu() {
   transform: rotate(-45deg);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .menu-toggle {
     display: block;
   }
@@ -181,11 +220,11 @@ function closeMenu() {
     gap: 0;
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.25s ease;
+    transition: max-height 0.3s ease;
   }
 
   .links.open {
-    max-height: 260px;
+    max-height: 360px;
   }
 
   .links a {
@@ -196,6 +235,15 @@ function closeMenu() {
 
   .links a::after {
     display: none;
+  }
+
+  .auth-slot {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    padding: 14px 24px;
+    margin-left: 0;
+    justify-content: space-between;
   }
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup>
 import { reactive, ref, computed, watch } from "vue";
+import { sanitizeText } from "../utils/sanitize.js";
 
 const props = defineProps({
   events: { type: Array, default: () => [] },
@@ -64,8 +65,10 @@ function handleSubmit() {
   if (!isValid.value) return;
 
   const chosenEvent = props.events.find((e) => e.id === form.eventId);
+  // Defense-in-depth (BR C.4): even though Vue already escapes this on
+  // render, free-text the user typed is sanitised before it's stored/shown.
   confirmation.value = {
-    name: form.name.trim(),
+    name: sanitizeText(form.name.trim(), { maxLength: 80 }),
     eventTitle: chosenEvent ? chosenEvent.title : "an upcoming event",
   };
 

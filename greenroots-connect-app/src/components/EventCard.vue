@@ -1,12 +1,16 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps({
   event: { type: Object, required: true },
   saved: { type: Boolean, default: false },
+  isLoggedIn: { type: Boolean, default: false },
+  alreadyRated: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["toggle-save", "select"]);
+const emit = defineEmits(["toggle-save", "select", "rate"]);
+
+const hoverValue = ref(0);
 
 // Everything here is derived (dynamically computed) from the event data
 // object rather than being written by hand per-card.
@@ -18,6 +22,8 @@ const status = computed(() => {
   return { label: "Open", tone: "open" };
 });
 
+// Aggregated rating (BR C.3): the displayed average recalculates from the
+// full ratings array every time a new rating is pushed into it.
 const averageRating = computed(() => {
   const list = props.event.ratings || [];
   if (!list.length) return null;
@@ -33,6 +39,11 @@ const formattedDate = computed(() =>
 );
 
 const fullStars = computed(() => Math.round(averageRating.value || 0));
+
+function submitRating(value) {
+  if (!props.isLoggedIn || props.alreadyRated) return;
+  emit("rate", { eventId: props.event.id, value });
+}
 </script>
 
 <template>
@@ -77,6 +88,37 @@ const fullStars = computed(() => Math.round(averageRating.value || 0));
 
       <span class="status" :class="status.tone">
         {{ status.label }} &middot; {{ spotsLeft }} / {{ event.spotsTotal }} spots
+      </span>
+    </div>
+
+    <div class="rate-row">
+      <span class="rate-label">Rate this event:</span>
+      <span
+        class="rate-stars"
+        :class="{ disabled: !isLoggedIn || alreadyRated }"
+        @mouseleave="hoverValue = 0"
+      >
+        <button
+          v-for="n in 5"
+          :key="n"
+          type="button"
+          class="rate-star-btn"
+          :disabled="!isLoggedIn || alreadyRated"
+          :aria-label="`Rate ${n} out of 5`"
+          @mouseenter="hoverValue = n"
+          @click="submitRating(n)"
+        >
+          <svg viewBox="0 0 20 20" width="16" height="16">
+            <path
+              d="M10 1.5l2.6 5.4 6 .8-4.4 4.1 1.1 6-5.3-2.9-5.3 2.9 1.1-6L1.4 7.7l6-.8L10 1.5Z"
+              :fill="n <= hoverValue ? 'var(--ochre)' : '#dcd6c1'"
+            />
+          </svg>
+        </button>
+      </span>
+      <span v-if="alreadyRated" class="rate-note">You've rated this</span>
+      <span v-else-if="!isLoggedIn" class="rate-note">
+        <router-link to="/login">Log in</router-link> to rate
       </span>
     </div>
 
@@ -172,7 +214,7 @@ h3 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -219,6 +261,61 @@ h3 {
 .status.full {
   background: #ecdcd7;
   color: var(--error);
+}
+
+.rate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: var(--cream-deep);
+  border-radius: var(--radius-sm);
+}
+
+.rate-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.rate-stars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.rate-stars.disabled {
+  opacity: 0.6;
+}
+
+.rate-star-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.rate-star-btn:disabled {
+  cursor: not-allowed;
+}
+
+.rate-star-btn:focus-visible {
+  outline: 2px solid var(--ochre);
+  border-radius: 3px;
+}
+
+.rate-note {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-left: auto;
+}
+
+.rate-note a {
+  color: var(--forest);
+  font-weight: 600;
 }
 
 .card-cta {

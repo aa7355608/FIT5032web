@@ -29,6 +29,7 @@ export const rawEvents = [
     spotsTaken: 15,
     ratings: [4, 4, 5],
     tone: "ochre",
+    status: "draft",
   },
   {
     id: "evt-003",
