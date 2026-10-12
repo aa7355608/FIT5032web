@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// Paste into Firebase console -> Firestore Database -> Rules -> Publish.
+//
+// Roles live in users/{uid}.role. These rules are what actually stop a
+// volunteer making themselves a coordinator — the UI alone cannot.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isCoordinator() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coordinator';
+    }
+
+    match /users/{uid} {
+      // You can read your own profile; coordinators can read everyone's.
+      allow read: if signedIn() && (request.auth.uid == uid || isCoordinator());
+
+      // A new account may only create ITS OWN profile, and only as a volunteer.
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && request.resource.data.role == 'volunteer';
+
+      // Only a coordinator may change someone's role. Anyone may update their
+      // own profile as long as the role stays exactly what it was.
+      allow update: if isCoordinator()
+                    || (request.auth.uid == uid
+                        && request.resource.data.role == resource.data.role);
+
+      allow delete: if false;
+    }
+  }
+}

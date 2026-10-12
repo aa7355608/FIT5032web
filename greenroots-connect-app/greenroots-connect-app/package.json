@@ -1,0 +1,24 @@
+{
+  "name": "greenroots-connect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GreenRoots Connect - community urban greening & tree-planting web app (Vue 3 / Composition API)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/table-logic.test.mjs tests/sanitize.test.mjs tests/email-function.test.mjs",
+    "cf:dev": "wrangler pages dev dist"
+  },
+  "dependencies": {
+    "firebase": "^13.0.0",
+    "jose": "^6.2.12",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.0"
+  }
+}

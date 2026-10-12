@@ -1,0 +1,6 @@
+# Only for running the email function locally with `npm run cf:dev`.
+# Copy to .dev.vars (git-ignored). On Cloudflare, set these in
+# Pages -> Settings -> Variables and Secrets instead.
+SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=
+VITE_FIREBASE_PROJECT_ID=
