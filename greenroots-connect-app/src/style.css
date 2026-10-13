@@ -1,0 +1,178 @@
+:root {
+  --cream: #f6f4ec;
+  --cream-deep: #efebdc;
+  --forest: #1f3d2b;
+  --forest-deep: #142819;
+  --moss: #437150; /* darkened from #4c7a57: 4.5:1+ on cream and on the pale-green chips (WCAG 1.4.3) */
+  --moss-light: #a9c6ac;
+  --ochre: #c68a2e;
+  --ochre-light: #ecd9ae;
+  --ink: #20241f;
+  --ink-soft: #4b5248;
+  --line: #ddd6c4;
+  --white: #fffdf8;
+  --error: #a3402f;
+  --control-border: #7a8176; /* >= 3:1 against cream/white so field edges are visible (WCAG 1.4.11) */
+  --focus: #1f3d2b; /* focus ring: >= 3:1 against the page background (WCAG 2.4.7 / 1.4.11) */
+
+  --font-display: "Fraunces", "Iowan Old Style", serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --shadow-card: 0 1px 2px rgba(31, 61, 43, 0.06), 0 8px 24px -12px rgba(31, 61, 43, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  color: var(--forest-deep);
+  margin: 0 0 0.5em;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0 0 1em;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+/* One strong, consistent keyboard focus ring for every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+main:focus {
+  outline: none; /* main is only focused programmatically after navigation */
+}
+
+::placeholder {
+  color: #5f655a; /* placeholder text still needs 4.5:1 */
+  opacity: 1;
+}
+
+html {
+  scroll-padding-top: 84px; /* keep focused/anchored content clear of the sticky nav */
+}
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  background: var(--forest);
+  color: var(--white);
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 12px;
+  outline: 3px solid var(--white);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--forest);
+}
+
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--moss);
+  font-weight: 500;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 13px 26px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  font-family: var(--font-body);
+}
+
+.btn-primary {
+  background: var(--forest);
+  color: var(--white);
+}
+
+.btn-primary:hover {
+  background: var(--forest-deep);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  background: var(--ink-soft);
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--forest);
+  border: 1.5px solid var(--forest);
+}
+
+.btn-ghost:hover {
+  background: var(--forest);
+  color: var(--white);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
