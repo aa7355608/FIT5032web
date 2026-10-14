@@ -44,6 +44,12 @@ in the browser only. Demo logins: `amara@example.com` / `Volunteer1` (volunteer)
 `priya@example.com` / `Coordinator1` (coordinator). **Demo mode is not external authentication** — BR D.1
 is only met once Firebase is configured (next section).
 
+## Login on every visit
+
+By default the app asks for a login **every time the page is opened or refreshed** — the login is kept only in memory
+(Firebase `inMemoryPersistence`; nothing is saved in the browser), and moving between pages inside the app doesn't log you out.
+Change it with `VITE_AUTH_PERSISTENCE` in `.env` (`none` | `tab` | `browser`, see `.env.example`) and rebuild.
+
 ## Set up Firebase (D.1)
 
 1. [console.firebase.google.com](https://console.firebase.google.com) → create a project.
@@ -159,7 +165,7 @@ The PDF library is loaded only when you click PDF.
 ## Manual test script
 
 1. Open the site logged out → you're sent to `/login`; typing `/data` or `/coordinator` does the same.
-2. Log in → you land on the page you asked for. Log out → back to `/login`.
+2. Log in → you land on the page you asked for. **Refresh the page or open the site in a new tab → you must log in again.** Log out → back to `/login`.
 3. `/data`: click a header to sort (arrow shows direction); type in a box under a column to filter just that
    column; use the top box to search everything; page through 10 rows at a time; "Clear filters" resets.
 4. Home → Register interest → pick an event → submit. On the deployed site with Firebase + SendGrid set up,

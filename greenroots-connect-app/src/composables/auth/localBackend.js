@@ -4,6 +4,7 @@
 // The login page shows a banner whenever this backend is active.
 import { hashPassword } from "../../utils/crypto.js";
 import { sanitizeText, normalizeEmail } from "../../utils/sanitize.js";
+import { AUTH_PERSISTENCE } from "../../authConfig.js";
 
 const USERS_KEY = "greenroots.users";
 const SESSION_KEY = "greenroots.session";
@@ -29,12 +30,27 @@ function saveUsers(users) {
   }
 }
 
-function persistSession(user) {
+// "none" keeps the login only in memory, so nothing is saved between page loads.
+function sessionStore() {
   try {
-    if (user) sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    else sessionStorage.removeItem(SESSION_KEY);
+    if (AUTH_PERSISTENCE === "tab") return sessionStorage;
+    if (AUTH_PERSISTENCE === "browser") return localStorage;
   } catch {
-    /* ignore */
+    /* storage blocked */
+  }
+  return null;
+}
+
+// Saves/clears the login in whichever store the configured mode allows
+// ("none" saves nothing, so a reload always starts logged out).
+function persistSession(user) {
+  const store = sessionStore();
+  if (!store) return;
+  try {
+    if (user) store.setItem(SESSION_KEY, JSON.stringify(user));
+    else store.removeItem(SESSION_KEY);
+  } catch {
+    /* storage blocked */
   }
 }
 
@@ -57,9 +73,15 @@ async function ensureSeedAccounts() {
 
 export async function init(context) {
   ctx = context;
+  const store = sessionStore();
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = store?.getItem(SESSION_KEY);
     if (raw) ctx.setUser(JSON.parse(raw));
+    // Drop any session left behind by an earlier build that saved logins.
+    if (!store) {
+      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
+    }
   } catch {
     ctx.setUser(null);
   }

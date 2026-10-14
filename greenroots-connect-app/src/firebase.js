@@ -6,7 +6,16 @@
 // `npm install`. Firebase web config values are identifiers, not secrets —
 // access is protected by Firebase Auth + the Firestore rules in firestore.rules.
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  initializeAuth,
+  inMemoryPersistence,
+  browserSessionPersistence,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
+  browserPopupRedirectResolver,
+} from "firebase/auth";
+import { AUTH_PERSISTENCE } from "./authConfig.js";
 import { getFirestore } from "firebase/firestore";
 
 const config = {
@@ -22,5 +31,20 @@ export const isFirebaseConfigured = Boolean(
 
 const app = isFirebaseConfigured ? initializeApp(config) : null;
 
-export const auth = app ? getAuth(app) : null;
+// Creating Auth with an explicit persistence means a login saved by an earlier
+// visit is never read back, so with the default ("none") every page load starts logged out.
+function createAuth() {
+  const persistence = {
+    none: inMemoryPersistence,
+    tab: browserSessionPersistence,
+    browser: [indexedDBLocalPersistence, browserLocalPersistence],
+  }[AUTH_PERSISTENCE];
+  try {
+    return initializeAuth(app, { persistence, popupRedirectResolver: browserPopupRedirectResolver });
+  } catch {
+    return getAuth(app); // already initialised (e.g. dev hot-reload)
+  }
+}
+
+export const auth = app ? createAuth() : null;
 export const db = app ? getFirestore(app) : null;

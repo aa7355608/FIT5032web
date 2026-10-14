@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/table-logic.test.mjs tests/sanitize.test.mjs tests/email-function.test.mjs tests/geo.test.mjs tests/geocode-function.test.mjs tests/export.test.mjs",
+    "test": "node --test tests/table-logic.test.mjs tests/sanitize.test.mjs tests/email-function.test.mjs tests/geo.test.mjs tests/geocode-function.test.mjs tests/export.test.mjs tests/auth-config.test.mjs",
     "cf:dev": "wrangler pages dev dist"
   },
   "dependencies": {

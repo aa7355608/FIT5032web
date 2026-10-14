@@ -2,6 +2,7 @@
 import { reactive, computed, ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useAuth } from "../composables/useAuth.js";
+import { AUTH_PERSISTENCE } from "../authConfig.js";
 
 const router = useRouter();
 const route = useRoute();
@@ -95,7 +96,10 @@ async function handleGoogle() {
     <div class="container auth-shell">
       <div class="card">
         <h1>{{ mode === "register" ? "Create your account" : "Welcome back" }}</h1>
-        <p class="gate-note">Please sign in to continue to GreenRoots Connect.</p>
+        <p class="gate-note">
+          Please sign in to continue to GreenRoots Connect.
+          <template v-if="AUTH_PERSISTENCE === 'none'">For your security you'll be asked to sign in each time you open the site.</template>
+        </p>
 
         <p v-if="authMode === 'local'" class="demo-banner" role="note">
           <strong>Demo mode:</strong> Firebase isn't configured, so accounts are stored in this
