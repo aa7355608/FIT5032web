@@ -4,6 +4,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEvents } from "../composables/useEvents.js";
 import { useAuth } from "../composables/useAuth.js";
+import PaginationNav from "../components/PaginationNav.vue";
+import { paginate, totalPages } from "../utils/tableLogic.js";
 import {
   MELBOURNE_WEST,
   ROUTE_MODES,
@@ -16,8 +18,8 @@ import { searchPlaces, fetchRoute } from "../services/geoService.js";
 
 // Map features (BR E.2):
 //  1. Events map: every planting event as a keyboard-reachable pin with a popup.
-//  2. Find near me: search a place (serverless geocoder) or use device location;
-//     events re-sort nearest-first with distances and a radius filter.
+//  2. Find near me: pick a starting point (search a place, use device location,
+//     or click the map); events re-sort nearest-first with distances + a radius filter.
 //  3. Directions: turn-by-turn walking / cycling / driving route to an event,
 //     drawn on the map and listed as text steps.
 // The event list is the text alternative to the map (WCAG 1.1.1 / 2.1.1).
@@ -25,7 +27,12 @@ import { searchPlaces, fetchRoute } from "../services/geoService.js";
 const { publishedEvents } = useEvents();
 const { getIdToken } = useAuth();
 
+const PAGE_SIZE = 5;
+
 const mapEl = ref(null);
+const routeBlockEl = ref(null);
+const routeHeadingEl = ref(null);
+const noticeEl = ref(null);
 const query = ref("");
 const placeResults = ref([]);
 const searching = ref(false);
@@ -36,6 +43,9 @@ const selectedId = ref("");
 const route = ref(null);
 const routeLoading = ref(false);
 const status = ref("");
+const notice = ref(null); // { kind: "origin" | "error", text } — shown right above the event list
+const pickMode = ref(false);
+const listPage = ref(1);
 
 let map = null;
 let markerLayer = null;
@@ -43,12 +53,13 @@ let originMarker = null;
 let routeLine = null;
 let markersById = {};
 let routeRequestId = 0;
+let pendingDirections = null; // an event the user asked directions to before choosing a start
 
 const SEARCH_ERRORS = {
   not_signed_in:
-    "Place search needs a Firebase sign-in (it isn't available in demo mode). You can still use \"Use my location\".",
+    "Place search needs a Firebase sign-in (it isn't available in demo mode). Use \"Use my location\" or \"Pick start on map\" instead.",
   unavailable:
-    "Place search runs on the serverless function, which isn't available here. It works on the deployed site, or locally with npm run cf:dev.",
+    "Place search runs on the serverless function, which isn't available here. It works on the deployed site. Meanwhile, use \"Use my location\" or \"Pick start on map\".",
   timeout: "The place search took too long. Please try again.",
   network: "Couldn't reach the place search. Check your connection.",
   bad_query: "Enter a suburb or address (2 to 120 characters).",
@@ -57,9 +68,18 @@ const SEARCH_ERRORS = {
 
 const ROUTE_ERRORS = {
   timeout: "Directions are taking too long. Please try again.",
-  network: "Couldn't reach the directions service. Check your connection.",
-  no_route: "No route was found to that event for this travel mode.",
+  network: "Couldn't reach the directions service. Please try again in a moment.",
+  no_route:
+    "No route was found between your starting point and this event for that travel mode. Try a different starting point or travel mode.",
+  unavailable: "Couldn't reach the directions service, and the backup service isn't available here. Please try again in a moment.",
 };
+
+function routeErrorText(reason) {
+  if (ROUTE_ERRORS[reason]) return ROUTE_ERRORS[reason];
+  const m = /^http_(\d+)$/.exec(reason || "");
+  if (m) return `The directions service returned an error (${m[1]}). Please try again in a moment.`;
+  return ROUTE_ERRORS.network;
+}
 
 const listedEvents = computed(() => {
   let list = withDistance(
@@ -72,8 +92,23 @@ const listedEvents = computed(() => {
   return list.sort((a, b) => (origin.value ? a.distanceKm - b.distanceKm : a.date.localeCompare(b.date)));
 });
 
+// The list is paged; pin numbers and list numbers both use the rank in the FULL list.
+const pages = computed(() => totalPages(listedEvents.value.length, PAGE_SIZE));
+const currentPage = computed(() => Math.min(listPage.value, pages.value));
+const pageStart = computed(() => (currentPage.value - 1) * PAGE_SIZE);
+const pagedList = computed(() => paginate(listedEvents.value, currentPage.value, PAGE_SIZE));
+const rangeText = computed(() => {
+  const total = listedEvents.value.length;
+  if (!total) return "";
+  const from = pageStart.value + 1;
+  const to = Math.min(pageStart.value + PAGE_SIZE, total);
+  return pages.value > 1 ? `Showing ${from}\u2013${to} of ${total} events` : `${total} event${total === 1 ? "" : "s"}`;
+});
+
 const shortLabel = (name) => name.split(",").slice(0, 2).join(",").trim();
 const fmtDate = (d) => new Date(d).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const isNarrowLayout = () => window.matchMedia("(max-width: 900px)").matches;
 
 // ---------- map drawing ----------
 
@@ -95,6 +130,11 @@ function buildPopup(e) {
   return wrap;
 }
 
+function showEventInList(e) {
+  const idx = listedEvents.value.findIndex((x) => x.id === e.id);
+  if (idx >= 0) listPage.value = Math.floor(idx / PAGE_SIZE) + 1;
+}
+
 function renderMarkers() {
   if (!map) return;
   markerLayer.clearLayers();
@@ -112,7 +152,10 @@ function renderMarkers() {
       title: e.title,
     });
     marker.bindPopup(() => buildPopup(e), { minWidth: 210 });
-    marker.on("click", () => (selectedId.value = e.id));
+    marker.on("click", () => {
+      selectedId.value = e.id;
+      showEventInList(e); // jump the list to this event's page
+    });
     marker.addTo(markerLayer);
     marker.getElement()?.setAttribute("aria-label", `${i + 1}. ${e.title}, ${e.suburb}`);
     markersById[e.id] = marker;
@@ -135,6 +178,7 @@ function fitView() {
 
 function clearRoute() {
   routeRequestId++;
+  routeLoading.value = false;
   route.value = null;
   if (routeLine) {
     routeLine.remove();
@@ -145,6 +189,7 @@ function clearRoute() {
 function setOrigin(o) {
   origin.value = o;
   placeResults.value = [];
+  notice.value = null;
   originMarker?.remove();
   originMarker = L.marker([o.lat, o.lng], {
     icon: L.divIcon({ className: "origin-pin", html: "<span>You</span>", iconSize: [46, 26], iconAnchor: [23, 13] }),
@@ -159,6 +204,12 @@ function setOrigin(o) {
     status.value = `Starting point set to ${shortLabel(o.label)}. ${listedEvents.value.length} event${
       listedEvents.value.length === 1 ? "" : "s"
     } shown, nearest first.`;
+    // The user already asked for directions: carry on automatically.
+    if (pendingDirections) {
+      const e = pendingDirections;
+      pendingDirections = null;
+      getDirections(e);
+    }
   });
 }
 
@@ -166,6 +217,7 @@ function clearOrigin() {
   origin.value = null;
   originMarker?.remove();
   originMarker = null;
+  pendingDirections = null;
   clearRoute();
   radius.value = "any";
   nextTick(() => {
@@ -175,7 +227,7 @@ function clearOrigin() {
   });
 }
 
-// ---------- actions ----------
+// ---------- choosing a starting point ----------
 
 async function runSearch() {
   const q = query.value.trim();
@@ -202,7 +254,7 @@ async function runSearch() {
 
 function useMyLocation() {
   if (!("geolocation" in navigator)) {
-    status.value = "Your browser doesn't support location. Search for a place instead.";
+    status.value = "Your browser doesn't support location. Try \"Pick start on map\" instead.";
     return;
   }
   status.value = "Finding your location…";
@@ -211,12 +263,41 @@ function useMyLocation() {
     (err) => {
       status.value =
         err.code === 1
-          ? "Location permission was denied. You can search for a place instead."
-          : "Couldn't get your location. Try searching for a place instead.";
+          ? "Location permission was denied. Try \"Pick start on map\" or search for a place instead."
+          : "Couldn't get your location (many desktop computers can't). Try \"Pick start on map\" or search for a place instead.";
     },
     { timeout: 10000, maximumAge: 60000 }
   );
 }
+
+function onMapPick(ev) {
+  pickMode.value = false;
+  map.getContainer().classList.remove("picking");
+  setOrigin({ lat: ev.latlng.lat, lng: ev.latlng.lng, label: "Point you picked on the map" });
+}
+
+function startPick() {
+  pickMode.value = true;
+  map.getContainer().classList.add("picking");
+  map.once("click", onMapPick);
+  status.value = "Click anywhere on the map to set your starting point.";
+  if (isNarrowLayout()) mapEl.value?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+}
+
+function cancelPick() {
+  pickMode.value = false;
+  map.off("click", onMapPick);
+  map.getContainer().classList.remove("picking");
+  status.value = "Picking cancelled.";
+}
+
+function focusSearch() {
+  const el = document.getElementById("place-q");
+  el?.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  el?.focus({ preventScroll: true });
+}
+
+// ---------- events & directions ----------
 
 function focusEvent(e) {
   selectedId.value = e.id;
@@ -224,23 +305,43 @@ function focusEvent(e) {
   markersById[e.id]?.openPopup();
 }
 
+function showNotice(next) {
+  notice.value = next;
+  nextTick(() => noticeEl.value?.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" }));
+}
+
+function revealRoute() {
+  const behavior = prefersReducedMotion() ? "auto" : "smooth";
+  // Phone layout: the map sits above the list, so bring it into view. Desktop: the map is sticky, show the steps.
+  if (isNarrowLayout()) mapEl.value?.scrollIntoView({ behavior, block: "center" });
+  else routeBlockEl.value?.scrollIntoView({ behavior, block: "nearest" });
+  routeHeadingEl.value?.focus({ preventScroll: true });
+}
+
 async function getDirections(e) {
   if (!origin.value) {
-    status.value = "Set a starting point first: search for a place or use your location.";
+    // Remember what they wanted, and make the next step obvious instead of failing quietly.
+    pendingDirections = e;
+    status.value = "Choose a starting point first.";
+    showNotice({ kind: "origin", text: `To get directions to "${e.title}", we need to know where you're starting from.` });
     return;
   }
+  notice.value = null;
   selectedId.value = e.id;
+  showEventInList(e);
   const myRequest = ++routeRequestId;
   routeLoading.value = true;
   status.value = `Finding ${ROUTE_MODES[mode.value].label.toLowerCase()} directions to ${e.title}…`;
-  const res = await fetchRoute(mode.value, origin.value, e);
+  const res = await fetchRoute(mode.value, origin.value, e, getIdToken);
   if (myRequest !== routeRequestId) return; // a newer request replaced this one
   routeLoading.value = false;
   if (!res.ok) {
     route.value = null;
     routeLine?.remove();
     routeLine = null;
-    status.value = ROUTE_ERRORS[res.reason] || ROUTE_ERRORS.network;
+    const text = routeErrorText(res.reason);
+    status.value = text;
+    showNotice({ kind: "error", text });
     return;
   }
   route.value = { ...res.route, event: e, mode: mode.value };
@@ -249,12 +350,15 @@ async function getDirections(e) {
   map.closePopup();
   map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
   status.value = `${ROUTE_MODES[mode.value].label} route to ${e.title}: ${formatDistance(res.route.distanceKm)}, about ${formatDuration(res.route.durationS)}.`;
+  await nextTick();
+  revealRoute();
 }
 
 // ---------- reactivity & lifecycle ----------
 
 watch(listedEvents, renderMarkers);
 watch(selectedId, markSelected);
+watch([origin, radius], () => (listPage.value = 1)); // a new starting point or filter restarts the list at page 1
 watch(radius, () => nextTick(fitView));
 watch(mode, () => {
   if (route.value) getDirections(route.value.event);
@@ -284,8 +388,8 @@ onBeforeUnmount(() => {
       <p class="eyebrow">Explore the map</p>
       <h1>Find a planting day near you</h1>
       <p class="intro">
-        Pins show upcoming events. Search for a place or use your location to see which are closest, then
-        get walking, cycling or driving directions. The event list works as a text version of the map.
+        Pins show upcoming events. Choose a starting point to see which are closest, then get walking,
+        cycling or driving directions. The event list works as a text version of the map.
       </p>
 
       <div class="layout">
@@ -305,7 +409,17 @@ onBeforeUnmount(() => {
                 {{ searching ? "Searching…" : "Search" }}
               </button>
             </div>
-            <button type="button" class="btn btn-ghost loc-btn" @click="useMyLocation">Use my location</button>
+            <div class="alt-row">
+              <button type="button" class="btn btn-ghost small" @click="useMyLocation">Use my location</button>
+              <button
+                type="button"
+                class="btn btn-ghost small"
+                :aria-pressed="pickMode"
+                @click="pickMode ? cancelPick() : startPick()"
+              >
+                {{ pickMode ? "Cancel picking" : "Pick start on map" }}
+              </button>
+            </div>
           </form>
 
           <p class="status" role="status" aria-live="polite">{{ status }}</p>
@@ -346,9 +460,13 @@ onBeforeUnmount(() => {
             role="region"
             aria-label="Map of upcoming planting events. Arrow keys pan and plus or minus zoom. The event list has the same information as text."
           ></div>
+        </div>
 
-          <section v-if="route" class="route-card" aria-labelledby="route-heading">
-            <h2 id="route-heading">{{ ROUTE_MODES[route.mode].label }} directions to {{ route.event.title }}</h2>
+        <div class="route-block">
+          <section v-if="route" ref="routeBlockEl" class="route-card" aria-labelledby="route-heading">
+            <h2 id="route-heading" ref="routeHeadingEl" tabindex="-1">
+              {{ ROUTE_MODES[route.mode].label }} directions to {{ route.event.title }}
+            </h2>
             <p class="route-summary">
               {{ formatDistance(route.distanceKm) }} · about {{ formatDuration(route.durationS) }}
             </p>
@@ -364,9 +482,30 @@ onBeforeUnmount(() => {
 
         <div class="list-block">
           <h2 id="events-heading">{{ origin ? "Events, nearest first" : "Upcoming events" }}</h2>
+
+          <div v-if="notice" ref="noticeEl" class="notice" :class="notice.kind" role="alert">
+            <p>
+              <strong>{{ notice.kind === "origin" ? "Choose a starting point first." : "Couldn't get directions." }}</strong>
+              {{ notice.text }}
+            </p>
+            <div v-if="notice.kind === 'origin'" class="notice-actions">
+              <button type="button" class="btn btn-primary small" @click="useMyLocation">Use my location</button>
+              <button type="button" class="btn btn-ghost small" @click="startPick">Pick on map</button>
+              <button type="button" class="btn btn-ghost small" @click="focusSearch">Search a place</button>
+            </div>
+            <button v-else type="button" class="link-btn" @click="notice = null">Dismiss</button>
+          </div>
+
           <p v-if="listedEvents.length === 0" class="hint">No events match. Try a larger distance.</p>
-          <ol class="event-list" aria-labelledby="events-heading">
-            <li v-for="e in listedEvents" :key="e.id" :class="{ active: selectedId === e.id }">
+          <p v-else class="hint" role="status">{{ rangeText }}</p>
+
+          <ol
+            class="event-list"
+            aria-labelledby="events-heading"
+            :start="pageStart + 1"
+            :style="{ counterReset: `pin ${pageStart}` }"
+          >
+            <li v-for="e in pagedList" :key="e.id" :class="{ active: selectedId === e.id }">
               <button type="button" class="event-btn" @click="focusEvent(e)">{{ e.title }}</button>
               <p class="meta">
                 {{ e.suburb }} · {{ fmtDate(e.date) }}
@@ -379,10 +518,12 @@ onBeforeUnmount(() => {
                 :aria-label="`Get directions to ${e.title}`"
                 @click="getDirections(e)"
               >
-                Directions
+                {{ routeLoading && selectedId === e.id ? "Finding route…" : "Directions" }}
               </button>
             </li>
           </ol>
+
+          <PaginationNav v-model:page="listPage" :pages="pages" label="Events" />
         </div>
       </div>
     </div>
@@ -407,22 +548,40 @@ h1 {
 
 .layout {
   display: grid;
-  grid-template-columns: 370px 1fr;
+  grid-template-columns: 370px minmax(0, 1fr);
   grid-template-areas:
     "search map"
+    "route map"
     "list map";
-  gap: 24px 28px;
+  grid-template-rows: auto auto 1fr;
+  column-gap: 28px;
   align-items: start;
 }
 
 .search-block {
   grid-area: search;
   min-width: 0;
+  margin-bottom: 24px;
 }
+
+/* On desktop the map stays in view while you scroll the event list */
 .map-block {
   grid-area: map;
   min-width: 0;
+  position: sticky;
+  top: 84px;
+  align-self: start;
 }
+
+.route-block {
+  grid-area: route;
+  min-width: 0;
+}
+
+.route-block:empty {
+  display: none;
+}
+
 .list-block {
   grid-area: list;
   min-width: 0;
@@ -459,8 +618,15 @@ h1 {
   font-family: var(--font-body);
 }
 
-.loc-btn {
-  width: 100%;
+.alt-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.alt-row .btn {
+  flex: 1;
+  min-width: 140px;
 }
 
 .status {
@@ -548,11 +714,11 @@ h1 {
 .hint {
   font-size: 13px;
   color: var(--ink-soft);
-  margin: 6px 0 0;
+  margin: 6px 0 10px;
 }
 
 .map {
-  height: 560px;
+  height: clamp(340px, calc(100vh - 150px), 620px);
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   position: relative;
@@ -561,7 +727,7 @@ h1 {
 }
 
 .route-card {
-  margin-top: 18px;
+  margin: 0 0 24px;
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -585,7 +751,7 @@ h1 {
   margin: 0 0 14px;
   padding-left: 22px;
   font-size: 14px;
-  max-height: 260px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -597,11 +763,40 @@ h1 {
   color: var(--ink-soft);
 }
 
+.notice {
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  font-size: 14px;
+  border: 1px solid;
+}
+
+.notice p {
+  margin: 0 0 10px;
+}
+
+.notice.origin {
+  background: var(--ochre-light);
+  border-color: #b98a2e;
+  color: #4d3208;
+}
+
+.notice.error {
+  background: #fbf1ee;
+  border-color: var(--error);
+  color: #6b2418;
+}
+
+.notice-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .event-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  counter-reset: pin;
 }
 
 .event-list li {
@@ -668,7 +863,14 @@ h1 {
     grid-template-areas:
       "search"
       "map"
+      "route"
       "list";
+    grid-template-rows: auto;
+  }
+
+  .map-block {
+    position: static;
+    margin-bottom: 24px;
   }
 
   .map {
@@ -681,6 +883,10 @@ h1 {
 /* Leaflet creates these elements itself, so these rules can't be scoped. */
 .leaflet-container {
   font-family: var(--font-body);
+}
+
+.leaflet-container.picking {
+  cursor: crosshair;
 }
 
 .ev-pin span {

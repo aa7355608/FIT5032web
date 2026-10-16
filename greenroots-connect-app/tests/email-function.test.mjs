@@ -24,8 +24,8 @@ test("long ICS lines are folded to <= 75 chars", () => {
 test("ICS is a valid-looking calendar for the event", () => {
   const ics = buildIcs(event, { now: new Date("2026-10-01T00:00:00Z") });
   assert.ok(ics.startsWith("BEGIN:VCALENDAR\r\n"));
-  assert.ok(ics.includes("DTSTART:20260914T090000"));
-  assert.ok(ics.includes("DTEND:20260914T120000"));
+  assert.ok(ics.includes(`DTSTART:${event.date.replaceAll("-", "")}T090000`));
+  assert.ok(ics.includes(`DTEND:${event.date.replaceAll("-", "")}T120000`));
   assert.ok(ics.includes("DTSTAMP:20261001T000000Z"));
   assert.ok(ics.trimEnd().endsWith("END:VCALENDAR"));
 });

@@ -1,6 +1,8 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import EventCard from "./EventCard.vue";
+import PaginationNav from "./PaginationNav.vue";
+import { paginate, totalPages } from "../utils/tableLogic.js";
 
 const props = defineProps({
   events: { type: Array, required: true },
@@ -38,6 +40,24 @@ const filteredEvents = computed(() => {
 
   return list;
 });
+
+// Paging: show 6 events (two rows of three) at a time so long result lists stay manageable.
+const PAGE_SIZE = 6;
+const page = ref(1);
+const pages = computed(() => totalPages(filteredEvents.value.length, PAGE_SIZE));
+const currentPage = computed(() => Math.min(page.value, pages.value));
+const pagedEvents = computed(() => paginate(filteredEvents.value, currentPage.value, PAGE_SIZE));
+const rangeText = computed(() => {
+  const total = filteredEvents.value.length;
+  if (!total) return "0 events found";
+  const from = (currentPage.value - 1) * PAGE_SIZE + 1;
+  const to = Math.min(from + PAGE_SIZE - 1, total);
+  const noun = total === 1 ? "event" : "events";
+  return pages.value > 1 ? `${total} ${noun} found, showing ${from}\u2013${to}` : `${total} ${noun} found`;
+});
+
+// A new search, filter or sort always starts again from page 1.
+watch([query, suburbFilter, sortBy], () => (page.value = 1));
 </script>
 
 <template>
@@ -82,7 +102,7 @@ const filteredEvents = computed(() => {
       </div>
 
       <p class="result-count" role="status">
-        {{ isLoading ? "Loading events\u2026" : `${filteredEvents.length} event${filteredEvents.length === 1 ? "" : "s"} found` }}
+        {{ isLoading ? "Loading events\u2026" : rangeText }}
       </p>
 
       <div v-if="isLoading" class="grid">
@@ -91,7 +111,7 @@ const filteredEvents = computed(() => {
 
       <div v-else-if="filteredEvents.length" class="grid">
         <EventCard
-          v-for="event in filteredEvents"
+          v-for="event in pagedEvents"
           :key="event.id"
           :event="event"
           :saved="savedIds.has(event.id)"
@@ -102,6 +122,8 @@ const filteredEvents = computed(() => {
           @rate="emit('rate', $event)"
         />
       </div>
+
+      <PaginationNav v-if="!isLoading" v-model:page="page" :pages="pages" label="Events" />
 
       <div v-else class="empty">
         <p>No events match &ldquo;{{ query }}&rdquo; in {{ suburbFilter === "all" ? "any suburb" : suburbFilter }} right now.</p>
